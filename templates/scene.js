@@ -8,8 +8,8 @@ export default async (s) => {
   const [from, to] = route.stops;
 
   // 2 · camera: where it starts, where it goes
-  s.camera.set({ fit: route, padding: 200 });
-  s.camera.to({ zoom: '+0.4', bearing: '+12', pitch: 35 }, { at: 0, dur: 20, ease: 'inOutSine' });
+  s.camera.set({ fit: route, padding: 230 });
+  s.camera.drift({ at: 0, dur: 20, zoom: '+0.1' });   // a slow push keeps the shot alive
 
   // 3 · things on the map
   const line = s.line(route, { width: 6, glow: 0.7 });
