@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>map-bamba</title>
+<link rel="stylesheet" href="/bamba/vendor/maplibre/maplibre-gl.css">
+<link rel="stylesheet" href="/bamba/src/runtime/overlay.css">
+<script type="importmap">
+{ "imports": { "maplibre-gl": "/bamba/vendor/maplibre/maplibre-gl.mjs", "map-bamba": "/bamba/src/runtime/scene.js" } }
+</script>
+</head>
+<body>
+<div id="stage"><div id="map"></div></div>
+<div id="player" style="display:none"><button>Play</button><input type="range" min="0" max="20" step="0.01" value="0"><output>0.00s</output></div>
+<pre id="error"></pre>
+<script>
+  // Catch module-graph failures (bad import, syntax error) that happen before main.js runs.
+  addEventListener('error', (e) => { if (!window.__bamba || !window.__bamba.ready) { const m = (e.error && e.error.stack) || e.message || 'failed to load ' + ((e.target && (e.target.src || e.target.href)) || 'resource'); window.__bamba = { error: String(m) }; const b = document.getElementById('error'); b.style.display = 'block'; b.textContent = String(m); } }, true);
+</script>
+<script type="module" src="/bamba/src/runtime/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+{
+  "name": "map-bamba",
+  "version": "0.1.0",
+  "description": "Code-driven 2D / 2.5D map animations on real map data. Built for AI agents.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "bamba": "bin/bamba.js"
+  },
+  "scripts": {
+    "doctor": "node bin/bamba.js doctor",
+    "sheet": "node bin/bamba.js sheet",
+    "still": "node bin/bamba.js still",
+    "render": "node bin/bamba.js render",
+    "preview": "node bin/bamba.js preview",
+    "new": "node bin/bamba.js new",
+    "examples": "node scripts/render-examples.js",
+    "glyphs": "node scripts/build-glyphs.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "maplibre-gl": "^6.18.0",
+    "playwright-core": "^1.65.1"
+  },
+  "devDependencies": {
+    "@mapbox/tiny-sdf": "^2.3.0"
+  },
+  "keywords": [
+    "map",
+    "animation",
+    "video",
+    "maplibre",
+    "motion-graphics",
+    "ai-agents",
+    "openstreetmap",
+    "geospatial"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MusicMaster4/map-bamba.git"
+  }
+}

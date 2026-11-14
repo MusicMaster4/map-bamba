@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="/bamba/src/runtime/overlay.css">
+<script type="module">
+import TinySDF from '/bamba/node_modules/@mapbox/tiny-sdf/index.js';
+const varint = (out, v) => { v >>>= 0; while (v > 127) { out.push((v & 127) | 128); v >>>= 7; } out.push(v); };
+const zig = (v) => (v << 1) ^ (v >> 31);
+const tag = (out, field, type) => varint(out, (field << 3) | type);
+const bytes = (out, field, arr) => { tag(out, field, 2); varint(out, arr.length); for (let i = 0; i < arr.length; i++) out.push(arr[i]); };
+const str = (out, field, s) => bytes(out, field, new TextEncoder().encode(s));
+
+window.buildRange = async (name, font, start) => {
+  const css = `${font.style} ${font.weight} ${font.stretch} 24px ${font.family}`;
+  await document.fonts.load(css, 'Aáçğ—');
+  const sdf = new TinySDF({ fontSize: 24, buffer: 3, radius: 8, cutoff: 0.25, fontFamily: font.family, fontWeight: String(font.weight), fontStyle: font.style });
+  sdf.ctx.font = css; // includes font-stretch
+  const probe = document.createElement('canvas').getContext('2d');
+  probe.font = css;
+  const asc = Math.round(probe.measureText('Hg').fontBoundingBoxAscent);
+  const stack = [];
+  str(stack, 1, name);
+  str(stack, 2, `${start}-${start + 255}`);
+  for (let cp = start; cp < start + 256; cp++) {
+    if (cp < 32 || (cp >= 127 && cp < 160)) continue;
+    const ch = String.fromCodePoint(cp);
+    if (!document.fonts.check(css, ch)) continue;
+    const g = sdf.draw(ch);
+    const m = [];
+    tag(m, 1, 0); varint(m, cp);
+    if (g.glyphWidth > 0 && g.glyphHeight > 0) bytes(m, 2, g.data);
+    tag(m, 3, 0); varint(m, g.glyphWidth);
+    tag(m, 4, 0); varint(m, g.glyphHeight);
+    tag(m, 5, 0); varint(m, zig(Math.round(g.glyphLeft)));
+    tag(m, 6, 0); varint(m, zig(Math.round(g.glyphTop) - asc));
+    tag(m, 7, 0); varint(m, Math.round(g.glyphAdvance));
+    bytes(stack, 3, m);
+  }
+  const root = [];
+  bytes(root, 1, stack);
+  let bin = '';
+  for (let i = 0; i < root.length; i += 8192) bin += String.fromCharCode(...root.slice(i, i + 8192));
+  return btoa(bin);
+};
+</script>

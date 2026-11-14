@@ -1,0 +1,5 @@
+node_modules/
+out/
+.bamba-cache/
+*.log
+.DS_Store
