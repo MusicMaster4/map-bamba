@@ -142,6 +142,16 @@ What keeps it cheap in tokens and hard to get wrong:
   tells the agent what makes a map video look composed rather than generated: the map is the hero,
   one accent colour, numbers over adjectives, no title cards.
 
+### Tested the way it will be used
+
+A separate agent was given only `AGENTS.md` and one sentence: *"a 20-second video of the Camino de
+Santiago with its main stops, on-screen text in Portuguese"*. It delivered a finished video in 28 tool
+calls and about five minutes, and the first render was the final one. The friction it reported —
+timing pins to a line as it draws, units too small, noisy errors — is why `line.timeAt()`,
+`line.kmAt()` and the one-line error messages exist. Its scene: [`examples/extras/camino.js`](examples/extras/camino.js).
+
+<p align="center"><img src="docs/examples/camino.jpg" alt="Camino de Santiago, made by a fresh agent" width="100%"></p>
+
 <p align="center"><img src="docs/presets.jpg" alt="Text styles, pins and presets" width="100%"><br><sub>Every text style, entrance preset, pin and legend kind — <code>examples/extras/text-presets.js</code></sub></p>
 
 ## Themes

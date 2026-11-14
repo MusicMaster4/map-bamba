@@ -15,7 +15,9 @@ node bin/bamba.js render scenes/my-scene.js           # → out/my-scene.mp4  (3
 ```
 
 **Always look at the sheet before rendering.** It is one image; read it, fix the scene, repeat. Use
-`--times 2,6.5,14` to pick moments and `-n 12` for more frames. Errors print the list of valid values.
+`--times 2,6.5,14` to pick moments and `-n 12` for more frames. Sheet frames are small: to judge small
+text (pin subs, units) use `still`. A misspelt option or preset fails at once with the valid names and
+the line in your scene.
 First run of a scene downloads tiles/data (slower); everything is cached in `.bamba-cache/` afterwards.
 
 ## Anatomy of a scene
@@ -37,8 +39,9 @@ export default async (s) => {
 Rules of the model:
 
 - Coordinates are always `[lng, lat]`.
-- You *declare* everything up front; nothing runs "live". Every call takes `at` (seconds, when it
-  starts) and usually `dur`. Most elements take `end` (when they start leaving).
+- You *declare* everything up front; nothing runs "live". Every element takes `at` (seconds, when it
+  appears), `dur` (how long its entrance takes), `end` (when it starts leaving), `outDur`, `ease`.
+  Screen and pinned elements also take `color`.
 - Sizes are in px at 1920×1080.
 - Colours: `s.c.signal amber ice mint rose violet` (accents), `s.c.paper dim` (neutrals),
   `s.c.accent fg bg` (theme). `s.c.mix(a, b, 0.5)`, `s.c.alpha(c, 0.4)`.
@@ -66,7 +69,9 @@ Rules of the model:
 ```js
 await s.geocode('Marco Zero, Recife')            // → [lng, lat] (+ .name, .bbox). Array in → array out
 await s.place('Le Marais, Paris')                // → { name, center, bbox, geojson } real outline: country/state/city/district/park/building
-await s.route([a, b, …], { profile: 'car' })     // 'car' | 'bike' | 'foot'. Points or address strings → LineString Feature + .km .minutes .stops
+await s.route([a, b, …], { profile: 'car' })     // 'car' | 'bike' | 'foot'; 2+ points or address strings (long multi-stop routes are fine)
+                                                 // → GeoJSON LineString Feature: route.geometry.coordinates, route.km, route.minutes,
+                                                 //   route.stops (your input points as [lng, lat], in order)
 await s.pois({ tags: 'amenity=cafe', within: place })               // real establishments → [{ lng, lat, name, tags }]
 await s.pois({ tags: ['amenity=bar', 'amenity=pub'], around: [lng, lat], radius: 800 })
 await s.countries('BR', 'AR')                    // Natural Earth outlines → Feature[] (props: name, name_pt, iso2, iso3, continent, pop)
@@ -93,6 +98,9 @@ s.camera.drift({ at: 0, dur: 20, zoom: '+0.15' })                      // slow p
 ```
 
 Zoom scale: 1–3 world · 4–6 country · 8–10 region · 11–13 city · 14–16 streets · 17+ buildings.
+Map labels exist only in their zoom range: countries ≤ 7 · states 4–9 · cities 3–14 · hoods 11+ · streets 13.5+.
+`follow` runs for the line's draw time (or your `at`/`dur`), keeps any property you don't pass
+(e.g. the current bearing) and holds the final position until the next `camera.to`.
 `pitch` 0 = top-down, 55–65 = cinematic 2.5D (needs `buildings: '3d'` or `terrain`). Moves on
 different properties overlap freely (orbit + zoom). Default ease is `glide`.
 `fit` ignores pitch: when tilted, pass `center` + `zoom` instead, or add `zoomOffset: 0.5`.
@@ -100,10 +108,13 @@ different properties overlap freely (orbit + zoom). Default ease is `glide`.
 ## On the map (drapes on terrain/globe, sits under labels)
 
 ```js
-const line = s.line(geom, { color, width: 5, glow: 0.8, dash: [2, 2] })   // geom: coords | Feature | route | arc
-line.draw({ at: 2, dur: 8 })          // draws itself; line.draw({ to: 0.5 }) then again to continue
+const line = s.line(geom, { color, width: 5, glow: 0.8, dash: [2, 2] })   // geom: coords | Feature | route | arc. dash = [on, off] in line widths
+line.draw({ at: 2, dur: 8 })          // draws itself (ease 'inOutSine'; pass ease: 'linear' for constant speed).
+                                      // line.draw({ to: 0.5 }) then again later to continue. Without draw() the whole line just fades in at `at`.
 line.erase({ at: 14, dur: 2 })        // tail chases head
-line.km, line.progress(t), line.headAt(t)
+line.timeAt([lng, lat])               // WHEN the drawing head reaches a place (or a 0..1 fraction) → use as `at` for pins along a route
+line.kmAt([lng, lat])                 // distance from the start to that place · line.km total
+line.progress(t)                      // fraction drawn at time t, 0..1 · line.headAt(t) → [lng, lat] of the head
 
 s.area(geom, { color, fill: 0.3, stroke: true, strokeWidth: 1.6, hatch: true, glow: 0.7, dash, at, end })
   .frames([{ at: 2, data: geojsonA }, { at: 2.1, data: geojsonB }, …])    // time-varying shape (front lines, floods, growth)
@@ -182,6 +193,7 @@ s.timebar({ from: '2022-04-01', to: '2026-11-01', at: 2, dur: 15, marks: [{ at: 
 | I want… | Use |
 |---|---|
 | A to B through real streets | `s.route` → `s.line().draw()` + `camera.follow` + `s.mover` + `s.counter({ follow })` — `examples/02` |
+| A journey with stops | one `s.route([...stops])`, then per stop `s.pin(p, name, { at: line.timeAt(p), sub: `km ${Math.round(line.kmAt(p))}` })` |
 | A flight | `config.globe` + `s.arc(a, b)` + `mover({ icon: 'plane' })` — `examples/03` |
 | Territory changing over time | `s.area().frames([...])` + `s.date` + `s.timebar` + `s.legend` — `examples/01` |
 | Mountains / a climb | `config.terrain` + `pitch` + `camera.orbit` — `examples/04` |

@@ -5,11 +5,14 @@ const q = new URLSearchParams(location.search);
 const stage = document.getElementById('stage');
 const errBox = document.getElementById('error');
 const fail = (e) => {
-  const msg = String((e && e.stack) || e);
+  const full = String((e && e.stack) || e);
+  // keep the message and the frames inside the user's scene; framework frames are noise
+  const lines = full.split('\n');
+  const own = lines.filter((l, i) => i > 0 && l.includes('/work/')).map((l) => l.replace(/https?:\/\/[^/]+\/work\//, '').replace(/\?v=\d+/, ''));
+  const msg = [String((e && e.message) || lines[0]).replace(/^Error: /, ''), ...own].join('\n');
   window.__bamba = { error: msg };
   errBox.style.display = 'block';
-  errBox.textContent = msg;
-  console.error('[bamba] ' + msg);
+  errBox.textContent = full;
 };
 
 async function boot() {

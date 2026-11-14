@@ -141,6 +141,19 @@ export class PathMetric {
     const a = this.coords[i], b = this.coords[Math.min(i + 1, this.coords.length - 1)];
     return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
   }
+  /** Fraction (0..1) of the path closest to a point. */
+  fractionOf(pt) {
+    let best = 0, bestD = Infinity;
+    const k = Math.cos(rad(pt[1]));
+    for (let i = 0; i < this.coords.length - 1; i++) {
+      const a = this.coords[i], b = this.coords[i + 1];
+      const dx = (b[0] - a[0]) * k, dy = b[1] - a[1], len = dx * dx + dy * dy;
+      const u = len ? Math.max(0, Math.min(1, (((pt[0] - a[0]) * k) * dx + (pt[1] - a[1]) * dy) / len)) : 0;
+      const d = ((pt[0] - a[0]) * k - u * dx) ** 2 + (pt[1] - a[1] - u * dy) ** 2;
+      if (d < bestD) { bestD = d; best = this.cum[i] + u * (this.cum[i + 1] - this.cum[i]); }
+    }
+    return this.km ? best / this.km : 0;
+  }
   /** Coordinates of the sub-path between fractions f0..f1. */
   slice(f0, f1) {
     if (f1 <= f0) return [];

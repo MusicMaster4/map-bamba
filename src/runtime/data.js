@@ -48,6 +48,7 @@ const OSRM = {
 };
 /** Real route along real streets. points: [[lng,lat] | "address", …] (2 or more). Returns a LineString Feature with .km and .minutes. */
 export async function route(points, o = {}) {
+  if (!Array.isArray(points) || points.length < 2) throw new Error('s.route(points): pass an array of 2+ points ([lng, lat] or address strings)');
   const profile = o.profile || 'car';
   if (!OSRM[profile]) throw new Error(`route: unknown profile "${profile}". Valid: car, bike, foot`);
   const pts = await geocode(points);

@@ -1,5 +1,5 @@
 // Map-space elements: they live inside the map (drape on terrain/globe, sit under labels).
-import { ease as getEase, prog, clamp } from './ease.js';
+import { ease as getEase, prog, clamp, check } from './ease.js';
 import { PathMetric, unwrap, toFC, bbox } from './geo.js';
 import { rgba, mix } from './color.js';
 
@@ -41,8 +41,10 @@ function partsOf(g) {
 /** A path on the map that can draw itself. */
 export class LineEl extends Timed {
   constructor(scene, geom, o = {}) {
+    check(o, ['color', 'width', 'opacity', 'glow', 'glowColor', 'casing', 'dash', 'slot'], 's.line()');
     super(scene, o, { dur: 0.01 });
-    this.o = { color: scene.theme.accent, width: 5, opacity: 1, glow: 0, casing: true, dash: null, slot: 'top', ...o };
+    this.o = { color: scene.theme.accent, width: 5, opacity: 1, glow: 0, dash: null, slot: 'top', ...o };
+    this.o.casing ??= !this.o.dash && this.o.width >= 3; // a dark casing under thin or dashed lines just muddies them
     this.parts = partsOf(geom).filter((c) => c.length > 1).map((c) => new PathMetric(c));
     if (!this.parts.length) throw new Error('line: geometry has no segments');
     this.metric = this.parts[0];
@@ -54,12 +56,13 @@ export class LineEl extends Timed {
   }
   /** Draw the line from its start: o = { at, dur, ease, to: 0..1 }. Call again to continue from where it stopped. */
   draw(o = {}) {
+    check(o, ['at', 'dur', 'ease', 'to'], 'line.draw()', false);
     this.tracks.push({ k: 'head', at: o.at ?? this.scene.t, dur: o.dur ?? 3, ease: getEase(o.ease || 'inOutSine'), to: o.to ?? 1 });
     this.hasDraw = true;
     return this;
   }
   /** Retract the line from its start (the tail chases the head): o = { at, dur, ease, to }. */
-  erase(o = {}) { this.tracks.push({ k: 'tail', at: o.at ?? this.scene.t, dur: o.dur ?? 2, ease: getEase(o.ease || 'inOutSine'), to: o.to ?? 1 }); return this; }
+  erase(o = {}) { check(o, ['at', 'dur', 'ease', 'to'], 'line.erase()', false); this.tracks.push({ k: 'tail', at: o.at ?? this.scene.t, dur: o.dur ?? 2, ease: getEase(o.ease || 'inOutSine'), to: o.to ?? 1 }); return this; }
   drawSpan() { const d = this.tracks.filter((x) => x.k === 'head'); return d.length ? { at: d[0].at, dur: d[d.length - 1].at + d[d.length - 1].dur - d[0].at } : null; }
   /** [tail, head] fractions visible at time t. */
   range(t) {
@@ -74,6 +77,21 @@ export class LineEl extends Timed {
       if (k === 'head') head = v; else tail = v;
     }
     return [Math.min(tail, head), head];
+  }
+  /** Distance in km from the start of the line to the point on it nearest to [lng, lat]. */
+  kmAt(lnglat) { return this.metric.fractionOf(lnglat) * this.metric.km; }
+  /**
+   * The time (seconds) at which the drawing head reaches a place: pass [lng, lat] (snapped to the line)
+   * or a fraction 0..1. Use it to time pins/labels to the line: s.pin(p, 'Burgos', { at: line.timeAt(p) }).
+   */
+  timeAt(target) {
+    const f = typeof target === 'number' ? target : this.metric.fractionOf(target);
+    const span = this.drawSpan();
+    if (!span) return this.at;
+    let lo = span.at, hi = span.at + span.dur;
+    if (this.range(hi)[1] < f) return hi;
+    for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; if (this.range(mid)[1] >= f) hi = mid; else lo = mid; }
+    return +hi.toFixed(3);
   }
   /** Fraction drawn at time t (0..1). */
   progress(t) { return this.range(t)[1]; }
@@ -107,6 +125,7 @@ export class LineEl extends Timed {
 /** Filled region (country, neighbourhood, front line…). Data can be swapped over time with frames(). */
 export class AreaEl extends Timed {
   constructor(scene, geom, o = {}) {
+    check(o, ['color', 'fill', 'stroke', 'strokeWidth', 'strokeOpacity', 'hatch', 'glow', 'dash', 'slot'], 's.area()');
     super(scene, o, { dur: 1 });
     this.o = { color: scene.theme.accent, fill: 0.28, stroke: true, strokeWidth: 1.6, hatch: false, glow: 0, slot: 'low', ...o };
     this.data = toFC(geom);
@@ -163,6 +182,7 @@ function hatchImage(color, spacing, width) {
  */
 export class PointsEl extends Timed {
   constructor(scene, items, o = {}) {
+    check(o, ['color', 'size', 'opacity', 'stagger', 'pulse', 'glow', 'label', 'labelSize', 'labelMinZoom', 'labelColor', 'stroke', 'blur', 'slot'], 's.points()');
     super(scene, o, { dur: 0.5, ease: 'linear' });
     this.o = { color: scene.theme.accent, size: 5, opacity: 0.95, stagger: 0, pulse: false, label: null, slot: 'top', stroke: true, blur: 0, labelSize: 13, ...o };
     const list = items.type === 'FeatureCollection' ? items.features : items;
@@ -209,6 +229,7 @@ export class PointsEl extends Timed {
 /** Extruded shape (a highlighted building, a bar on the map). Height grows in on `at`. */
 export class ExtrudeEl extends Timed {
   constructor(scene, geom, o = {}) {
+    check(o, ['color', 'height', 'base', 'opacity'], 's.extrude()');
     super(scene, o, { dur: 1.2, ease: 'outCubic' });
     this.o = { color: scene.theme.accent, height: 100, base: 0, opacity: 0.92, ...o };
     this.data = toFC(geom);

@@ -85,10 +85,12 @@ export class Scene {
   ticker(o) { return this.counter(o); }
   /** Date readout running from → to: { from, to, at, dur, format: Intl options | (date) => string, pos } */
   date(o = {}) {
+    if (o.from == null || o.to == null) throw new Error('s.date(): pass { from, to } (dates or ISO strings)');
     const a = +new Date(o.from), b = +new Date(o.to);
     const f = typeof o.format === 'function' ? o.format : ((fmt) => (d) => fmt.format(d))(new Intl.DateTimeFormat(this.cfg.locale, { timeZone: 'UTC', ...(o.format || { month: 'short', year: 'numeric' }) }));
     const e = getEase(o.ease || 'linear'), at = o.at ?? this.t, dur = o.dur ?? 10;
-    return this.counter({ size: 64, ...o, at, value: (t) => f(new Date(lerp(a, b, e(prog(t, at, dur))))) });
+    const { from: _f, to: _t, format: _fmt, ease: _e, ...rest } = o;
+    return this.counter({ size: 64, ...rest, at, value: (t) => f(new Date(lerp(a, b, e(prog(t, at, dur))))) });
   }
   legend(items, o) { return this._d(new LegendEl(this, items, o)); }
   timebar(o) { return this._d(new TimebarEl(this, o)); }

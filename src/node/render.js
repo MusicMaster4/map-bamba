@@ -52,12 +52,12 @@ async function openScene(browser, origin, sceneRel, { scale = 1, fps, player = f
   const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: scale });
   const page = await ctx.newPage();
   page.on('console', (m) => { const t = m.text(); if (m.type() === 'error' || t.startsWith('[bamba]')) onLog?.(m.type(), t); });
-  page.on('pageerror', (e) => onLog?.('error', String(e.stack || e)));
+  page.on('pageerror', (e) => { if (!/Scene failed|__bamba/.test(String(e))) onLog?.('error', String(e.message || e)); });
   const url = `${origin}/?scene=${encodeURIComponent('/work/' + sceneRel.replace(/\\/g, '/'))}${fps ? '&fps=' + fps : ''}${player ? '&player=1' : ''}`;
   await page.goto(url);
   await page.waitForFunction(() => window.__bamba && (window.__bamba.ready || window.__bamba.error), null, { timeout: 180000 });
   const info = await page.evaluate(() => ({ ...window.__bamba, seek: undefined }));
-  if (info.error) throw new Error('Scene failed to build:\n' + info.error);
+  if (info.error) throw new Error('scene failed to build — ' + info.error);
   if (info.width !== 1920 || info.height !== 1080) await page.setViewportSize({ width: info.width, height: info.height });
   const cdp = await ctx.newCDPSession(page);
   return { ctx, page, cdp, info };
@@ -183,6 +183,7 @@ export async function sheet(sceneFile, opts = {}) {
   const { abs, rel } = sceneRelPath(sceneFile, workDir);
   const out = path.resolve(workDir, opts.out || path.join('out', path.basename(abs).replace(/\.[^.]+$/, '') + '.sheet.jpg'));
   await fsp.mkdir(path.dirname(out), { recursive: true });
+  await fsp.rm(out, { force: true }); // a failed run must not leave the previous sheet behind
   const warnings = new Set();
   const onLog = (type, text) => { if (!warnings.has(text)) { warnings.add(text); (opts.log || (() => {}))(`  ${type === 'error' ? 'ERROR' : 'warn'}: ${text.replace(/^\[bamba\] /, '')}`); } };
   const server = await startServer({ workDir, offline: opts.offline });

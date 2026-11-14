@@ -30,7 +30,7 @@ export function resolveTheme(theme, overrides = {}, flags = {}) {
   t.k = k;
   // Water is the canvas itself on dark themes; land is "drawn" one step lighter.
   t.water = t.dark ? t.bg : t.blue;
-  t.land = t.dark ? k(0.07) : t.bg;
+  t.land = t.dark ? k(0.085) : t.bg;
   // On a globe the sphere has to read against empty space, so the ocean lifts off the canvas a little.
   if (flags.globe && t.dark) { t.water = k(0.035); t.land = k(0.1); }
   t.shore = k(t.dark ? 0.2 : 0.22);
@@ -46,7 +46,7 @@ export function resolveTheme(theme, overrides = {}, flags = {}) {
   t.roadCase = t.dark ? t.land : k(0.16);
   t.rail = k(0.2);
   t.border = [k(0.42), k(0.24)]; // country, state
-  t.label = { country: k(0.62), state: k(0.36), city: k(0.8), town: k(0.56), hood: k(0.38), street: k(0.56), water: k(t.dark ? 0.34 : 0.45), poi: k(0.5) };
+  t.label = { country: k(0.62), state: k(0.48), city: k(0.8), town: k(0.56), hood: k(0.38), street: k(0.56), water: k(t.dark ? 0.34 : 0.45), poi: k(0.5) };
   t.halo = t.land;
   return t;
 }
@@ -174,7 +174,7 @@ export function buildStyle(t, opts = {}, tilesUrl) {
       { 'text-color': t.label.city }, { minzoom: 3, maxzoom: 14.5 });
   }
   if (L.states) {
-    sym('label-state', 'place', ['in', ['get', 'class'], ['literal', ['state', 'province']]], { 'text-font': F.cond, 'text-size': lin(4, 10, 8, 13), 'text-transform': 'uppercase', 'text-letter-spacing': 0.16, 'text-max-width': 6 }, { 'text-color': t.label.state }, { minzoom: 4.2, maxzoom: 8.5 });
+    sym('label-state', 'place', ['in', ['get', 'class'], ['literal', ['state', 'province']]], { 'text-font': F.cond, 'text-size': lin(4, 10, 8, 13), 'text-transform': 'uppercase', 'text-letter-spacing': 0.16, 'text-max-width': 6 }, { 'text-color': t.label.state }, { minzoom: 4.2, maxzoom: 9.5 });
   }
   if (L.countries) {
     sym('label-country', 'place', ['==', ['get', 'class'], 'country'],

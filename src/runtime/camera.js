@@ -1,5 +1,7 @@
 // Camera: a pure function of time. Moves are declared up front; state(t) folds them.
-import { ease as getEase, prog, lerp, clamp } from './ease.js';
+import { ease as getEase, prog, lerp, clamp, check } from './ease.js';
+
+const VIEW = ['center', 'zoom', 'bearing', 'pitch', 'fit', 'padding', 'maxZoom', 'zoomOffset'];
 import { mercX, mercY, unmercX, unmercY, bbox as bboxOf } from './geo.js';
 
 const KEYS = ['zoom', 'bearing', 'pitch'];
@@ -14,25 +16,29 @@ export class Camera {
     this.segs = [];
   }
   /** Starting view. view = { center, zoom, bearing, pitch } or { fit: geometry|[w,s,e,n], padding } */
-  set(view) { this.baseView = view; return this; }
+  set(view) { check(view, VIEW, 'camera.set()', false); this.baseView = view; return this; }
   /**
    * Move to a view. Numbers are absolute; strings like '+40' / '-0.5' are relative to wherever the camera is.
    * o = { at, dur, ease, curve } — when both position and zoom change it flies (zooms out, then in); curve≈1.42.
    */
   to(view, o = {}) {
+    check(view, VIEW, 'camera.to() view', false);
+    check(o, ['at', 'dur', 'ease', 'curve'], 'camera.to() options', false);
     this.segs.push({ type: 'to', view, at: o.at ?? this.scene.t, dur: o.dur ?? 3, ease: getEase(o.ease || 'glide'), curve: o.curve ?? 1.42 });
     this._sort();
     return this;
   }
   /** Rotate around the current centre: o = { at, dur, by: degrees, ease }. */
-  orbit(o = {}) { return this.to({ bearing: (o.by ?? 360) >= 0 ? '+' + (o.by ?? 360) : String(o.by) }, { ease: 'inOutSine', ...o }); }
+  orbit(o = {}) { check(o, ['at', 'dur', 'by', 'ease'], 'camera.orbit()', false); return this.to({ bearing: (o.by ?? 360) >= 0 ? '+' + (o.by ?? 360) : String(o.by) }, { ease: o.ease ?? 'inOutSine', at: o.at, dur: o.dur }); }
   /** Slow push/drift so a held shot never feels frozen: o = { at, dur, zoom: '+0.3', bearing: '+6' }. */
-  drift(o = {}) { return this.to({ zoom: o.zoom ?? '+0.25', bearing: o.bearing ?? '+0', pitch: o.pitch ?? '+0' }, { ease: 'linear', ...o }); }
+  drift(o = {}) { check(o, ['at', 'dur', 'ease', 'zoom', 'bearing', 'pitch'], 'camera.drift()', false); return this.to({ zoom: o.zoom ?? '+0.25', bearing: o.bearing ?? '+0', pitch: o.pitch ?? '+0' }, { ease: o.ease ?? 'linear', at: o.at, dur: o.dur }); }
   /**
    * Keep the camera on the head of a line while it draws.
    * o = { at, dur, zoom, pitch, bearing: number|'auto', settle: seconds to reach zoom/pitch, blend: seconds to catch the head }
    */
   follow(line, o = {}) {
+    check(o, ['at', 'dur', 'ease', 'zoom', 'pitch', 'bearing', 'settle', 'blend', 'window', 'bearingOffset'], 'camera.follow()', false);
+    if (!line || !line.metric) throw new Error('camera.follow(line, options): first argument must be a line created with s.line()');
     const d = line.drawSpan?.();
     this.segs.push({ type: 'follow', line, at: o.at ?? d?.at ?? this.scene.t, dur: o.dur ?? d?.dur ?? 5, o });
     this._sort();

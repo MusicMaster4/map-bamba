@@ -60,7 +60,7 @@ html, body { margin: 0; padding: 0; background: #151515; overflow: hidden; }
 /* ---- counter ---- */
 .b-counter { text-shadow: 0 0 calc(var(--u) * 18px) var(--halo); }
 .b-num { font: 560 calc(var(--u) * 84px) / 0.95 var(--f-sans); font-stretch: 88%; letter-spacing: -0.02em; font-variant-numeric: tabular-nums lining-nums; white-space: nowrap; }
-.b-unit { font-size: 0.36em; font-weight: 480; font-stretch: 100%; letter-spacing: 0.01em; margin-left: 0.3em; opacity: 0.7; }
+.b-unit { font-size: max(0.36em, calc(var(--u) * 21px)); font-weight: 480; font-stretch: 100%; letter-spacing: 0.01em; margin-left: 0.3em; opacity: 0.7; }
 .b-pre { margin-left: 0; margin-right: 0.25em; }
 .b-lbl { font: 420 calc(var(--u) * 21px) / 1.25 var(--f-sans); opacity: 0.62; margin-top: calc(var(--u) * 8px); letter-spacing: 0.01em; }
 

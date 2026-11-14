@@ -1,5 +1,5 @@
 // Screen-space and geo-anchored DOM elements: text, labels, pins, movers, counters, legends.
-import { ease as getEase, prog, clamp, lerp } from './ease.js';
+import { ease as getEase, prog, clamp, lerp, check } from './ease.js';
 import { Timed } from './layers.js';
 import { rgba } from './color.js';
 
@@ -69,7 +69,8 @@ const STYLES = ['title', 'caption', 'note', 'mono', 'serif', 'quote'];
 
 /** Shared behaviour for elements placed on the 3×3 screen grid. */
 class ScreenEl extends Timed {
-  constructor(scene, o, defaults) {
+  constructor(scene, o, defaults, allowed, what) {
+    check(o, [...allowed, 'pos', 'offset', 'color', 'width', 'align'], what);
     super(scene, o, defaults);
     this.o = o;
     this.pos = o.pos ?? defaults.pos ?? 'bl';
@@ -96,7 +97,7 @@ class ScreenEl extends Timed {
 /** Screen text. s.text(str, { pos, style, in, out, at, end, dur, size, color, sub }) */
 export class TextEl extends ScreenEl {
   constructor(scene, text, o = {}) {
-    super(scene, o, { dur: o.in === 'type' ? Math.max(0.6, String(text).length * 0.045) : 0.9, pos: 'bl' });
+    super(scene, o, { dur: o.in === 'type' ? Math.max(0.6, String(text).length * 0.045) : 0.9, pos: 'bl' }, ['style', 'in', 'out', 'size', 'weight', 'upper', 'tracking', 'font', 'italic', 'sub', 'plate'], 's.text()');
     this.text = text;
     this.style = o.style || 'caption';
     if (!STYLES.includes(this.style)) throw new Error(`Unknown text style "${this.style}". Valid: ${STYLES.join(', ')}`);
@@ -126,7 +127,7 @@ export class TextEl extends ScreenEl {
 
 /** Animated number. s.counter({ to, from, follow: line, decimals, prefix, unit, label, pos, at, dur }) */
 export class CounterEl extends ScreenEl {
-  constructor(scene, o = {}) { super(scene, o, { dur: 3, pos: 'br', ease: 'inOutSine' }); }
+  constructor(scene, o = {}) { super(scene, o, { dur: 3, pos: 'br', ease: 'inOutSine' }, ['to', 'from', 'follow', 'value', 'decimals', 'prefix', 'unit', 'label', 'format', 'size', 'fade'], 's.counter()'); }
   mount() {
     const o = this.o, u = this.scene.overlay.u;
     const el = h('div', 'b-counter');
@@ -156,7 +157,7 @@ export class CounterEl extends ScreenEl {
 
 /** Colour key. s.legend([{ color, label, kind: 'fill'|'line'|'dot'|'hatch' }], { pos, at }) */
 export class LegendEl extends ScreenEl {
-  constructor(scene, items, o = {}) { super(scene, o, { dur: 0.8, pos: 'bl' }); this.items = items; }
+  constructor(scene, items, o = {}) { super(scene, o, { dur: 0.8, pos: 'bl' }, [], 's.legend()'); if (!Array.isArray(items)) throw new Error('s.legend(items, options): items must be an array of { color, label, kind }'); this.items = items; }
   mount() {
     const el = h('div', 'b-legend');
     this.rows = this.items.map((it) => {
@@ -178,7 +179,7 @@ export class LegendEl extends ScreenEl {
 
 /** Thin time axis with a moving playhead. s.timebar({ from, to, at, dur, marks: [{ at: date|number, label }], format }) */
 export class TimebarEl extends ScreenEl {
-  constructor(scene, o = {}) { super(scene, o, { dur: 10, pos: 'b', ease: 'linear' }); }
+  constructor(scene, o = {}) { super(scene, o, { dur: 10, pos: 'b', ease: 'linear' }, ['from', 'to', 'marks'], 's.timebar()'); }
   mount() {
     const o = this.o, u = this.scene.overlay.u;
     const num = (v) => (typeof v === 'number' ? v : +new Date(v));
@@ -220,6 +221,7 @@ const PIN_KINDS = ['dot', 'ring', 'pulse', 'stem', 'none'];
  */
 export class PinEl extends Timed {
   constructor(scene, lnglat, text, o = {}) {
+    check(o, ['kind', 'side', 'style', 'size', 'color', 'sub', 'offset', 'leader', 'stem', 'alt', 'altGrow', 'labelColor', 'textSize'], 's.pin() / s.label()');
     super(scene, o, { dur: 0.9 });
     if (!lnglat || typeof lnglat[0] !== 'number') throw new Error('pin/label: first argument must be [lng, lat]');
     this.lnglat = [lnglat[0], lnglat[1]];
@@ -314,6 +316,8 @@ export const ICONS = {
  */
 export class MoverEl extends Timed {
   constructor(scene, line, o = {}) {
+    check(o, ['icon', 'size', 'color', 'rotate', 'halo'], 's.mover()');
+    if (!line || !line.metric) throw new Error('s.mover(line, options): first argument must be a line created with s.line()');
     const span = line.drawSpan?.();
     super(scene, { ...o, at: o.at ?? span?.at }, { dur: span?.dur ?? 5 });
     this.line = line;

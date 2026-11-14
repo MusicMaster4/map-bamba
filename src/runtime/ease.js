@@ -35,3 +35,12 @@ export const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 export const lerp = (a, b, p) => a + (b - a) * p;
 /** Progress 0..1 of time t inside [at, at+dur]. */
 export const prog = (t, at, dur) => (dur <= 0 ? (t >= at ? 1 : 0) : clamp((t - at) / dur));
+
+const TIMING = ['at', 'dur', 'end', 'outDur', 'ease'];
+/** Fail fast on misspelt options: unknown keys throw with the list of valid ones. */
+export function check(o, allowed, what, timing = true) {
+  if (!o || typeof o !== 'object') return;
+  const ok = timing ? [...allowed, ...TIMING] : allowed;
+  const bad = Object.keys(o).filter((k) => !ok.includes(k));
+  if (bad.length) throw new Error(`${what}: unknown option${bad.length > 1 ? 's' : ''} ${bad.map((b) => '"' + b + '"').join(', ')}. Valid: ${ok.join(', ')}`);
+}
