@@ -1,0 +1,24 @@
+{
+  "recipe": "tour",
+  "title": "Os três grandes estádios de São Paulo",
+  "unit": "lugares",
+  "total": "somados",
+  "lang": "pt",
+  "stops": [
+    {
+      "q": "Estádio do Morumbi, São Paulo",
+      "name": "Morumbi",
+      "value": 66795
+    },
+    {
+      "q": "Allianz Parque, São Paulo",
+      "name": "Allianz Parque",
+      "value": 43713
+    },
+    {
+      "q": "Neo Química Arena, São Paulo",
+      "name": "Neo Química Arena",
+      "value": 49205
+    }
+  ]
+}

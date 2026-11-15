@@ -1,5 +1,6 @@
 // Page bootstrap: load the scene module, build it, expose window.__bamba for the renderer.
 import { Scene } from './scene.js';
+import { recipeFor } from '../recipes/index.js';
 
 const q = new URLSearchParams(location.search);
 const stage = document.getElementById('stage');
@@ -18,20 +19,33 @@ const fail = (e) => {
 async function boot() {
   const src = q.get('scene');
   if (!src) throw new Error('No scene given (?scene=/work/path/to/scene.js)');
-  const mod = await import(src + (src.includes('?') ? '&' : '?') + 'v=' + Date.now());
+  let mod;
+  if (/\.json($|\?)/.test(src)) {
+    // a brief: { "recipe": "route", … } — a complete video from a few lines of JSON
+    const res = await fetch(src + '?v=' + Date.now());
+    if (!res.ok) throw new Error(`Cannot read ${src} (${res.status})`);
+    let P;
+    try { P = JSON.parse(await res.text()); } catch (e) { throw new Error(`${src} is not valid JSON: ${e.message}`); }
+    const R = recipeFor(P);
+    mod = { default: (s) => R.default(s, P) };
+  } else mod = await import(src + (src.includes('?') ? '&' : '?') + 'v=' + Date.now());
   if (typeof mod.default !== 'function') throw new Error(`${src} must "export default async (s) => { … }"`);
   const cfg = { ...(mod.config || {}) };
-  if (q.get('fps')) cfg.fps = +q.get('fps');
   const scene = new Scene(cfg, new URL(src, location.href).href);
   await mod.default(scene);
+  if (q.get('fps')) scene.configure({ fps: +q.get('fps') });
   await scene.mount(stage);
-  await scene.settle(0);
+  if (!q.get('lazy')) await scene.settle(0);
   window.__scene = scene;
   window.__bamba = {
     ready: true, duration: scene.duration, fps: scene.fps, width: scene.width, height: scene.height, bg: scene.theme.bg,
     warnings: scene.warnings,
     seek: (t) => scene.seek(t),
     settle: (t) => scene.settle(t),
+    keyTimes: (n) => scene.keyTimes(n),
+    audit: () => scene.audit(),
+    frame: (t, settle, url, blur, dt) => scene.frame(t, settle, url, blur, dt),
+    fast: !!scene.overlay.comp, pixfmt: scene.overlay.yuv ? 'yuv420p' : 'rgba', // true when frames can be read straight from the compositing canvas
     gpu: (() => { try { const gl = scene.map.painter.context.gl; const ext = gl.getExtension('WEBGL_debug_renderer_info'); return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER); } catch { return 'unknown'; } })(),
   };
   if (q.get('player')) player(scene);

@@ -44,6 +44,7 @@ export async function startServer({ workDir = process.cwd(), cacheDir, port = 0,
   await fsp.mkdir(httpDir, { recursive: true });
   const maplibreDir = path.dirname(require.resolve('maplibre-gl/package.json'));
   const stats = { hit: 0, miss: 0, fail: 0 };
+  const sinks = new Map(); // id → async (req) => void: where a worker's raw frames go (its ffmpeg)
   const inflight = new Map();
 
   async function cachedFetch(url, method, body) {
@@ -105,6 +106,13 @@ export async function startServer({ workDir = process.cwd(), cacheDir, port = 0,
     try {
       const u = new URL(req.url, 'http://x');
       const p = decodeURIComponent(u.pathname);
+      if (p === '/__frame') {
+        const sink = sinks.get(u.searchParams.get('id'));
+        if (!sink) { res.writeHead(410); res.end('no such frame sink'); return; }
+        const ok = await sink(req);
+        res.writeHead(ok === false ? 422 : 204); res.end();
+        return;
+      }
       if (p === '/__fetch') {
         const target = u.searchParams.get('url');
         let body = null;
@@ -133,7 +141,8 @@ export async function startServer({ workDir = process.cwd(), cacheDir, port = 0,
       res.writeHead(404); res.end('not found');
     } catch (e) { res.writeHead(500); res.end(String(e && e.stack || e)); }
   });
+  server.keepAliveTimeout = 120000; // pages hold one connection for the whole render
   await new Promise((r) => server.listen(port, '127.0.0.1', r));
   const actualPort = server.address().port;
-  return { port: actualPort, origin: `http://127.0.0.1:${actualPort}`, stats, cacheDir, close: () => new Promise((r) => { server.closeAllConnections?.(); server.close(r); }) };
+  return { port: actualPort, origin: `http://127.0.0.1:${actualPort}`, stats, sinks, cacheDir, close: () => new Promise((r) => { server.closeAllConnections?.(); server.close(r); }) };
 }

@@ -1,7 +1,7 @@
 {
   "name": "map-bamba",
-  "version": "0.1.0",
-  "description": "Code-driven 2D / 2.5D map animations on real map data. Built for AI agents.",
+  "version": "0.2.0",
+  "description": "2D and 2.5D map animations on real map data, from a JSON brief or a few lines of code. Built for AI agents.",
   "type": "module",
   "license": "MIT",
   "bin": {
@@ -15,7 +15,9 @@
     "preview": "node bin/bamba.js preview",
     "new": "node bin/bamba.js new",
     "examples": "node scripts/render-examples.js",
-    "glyphs": "node scripts/build-glyphs.js"
+    "glyphs": "node scripts/build-glyphs.js",
+    "check": "node bin/bamba.js check",
+    "bench": "node scripts/bench.js"
   },
   "engines": {
     "node": ">=20"

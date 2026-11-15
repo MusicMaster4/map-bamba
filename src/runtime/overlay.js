@@ -2,6 +2,7 @@
 import { ease as getEase, prog, clamp, lerp, check } from './ease.js';
 import { Timed } from './layers.js';
 import { rgba } from './color.js';
+import { YuvPacker } from './yuv.js';
 
 const h = (tag, cls, parent, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; if (parent) parent.appendChild(e); return e; };
 const stag = (P, i, n, s) => clamp(P * (1 + s * (n - 1)) - s * i);
@@ -226,6 +227,7 @@ export class PinEl extends Timed {
     if (!lnglat || typeof lnglat[0] !== 'number') throw new Error('pin/label: first argument must be [lng, lat]');
     this.lnglat = [lnglat[0], lnglat[1]];
     this.text = text;
+    this.autoSide = o.side === undefined && !o.offset && o.kind !== 'stem' && !!text; // no side given: pick the clearest one
     this.o = { kind: 'dot', side: 'right', style: 'city', size: 12, color: scene.theme.accent, ...o };
     if (!PIN_KINDS.includes(this.o.kind)) throw new Error(`Unknown pin kind "${this.o.kind}". Valid: ${PIN_KINDS.join(', ')}`);
     if (!LABEL_STYLES.includes(this.o.style)) throw new Error(`Unknown label style "${this.o.style}". Valid: ${LABEL_STYLES.join(', ')}`);
@@ -245,6 +247,7 @@ export class PinEl extends Timed {
     }
     if (o.kind !== 'none') {
       if (o.kind === 'pulse') this.rings = [0, 1].map(() => { const r = h('div', 'g-ring-fx', el); r.style.width = r.style.height = size + 'px'; return r; });
+      if (o.kind !== 'pulse') { this.ripple = h('div', 'g-ring-fx', el); this.ripple.style.width = this.ripple.style.height = size + 'px'; }
       this.dot = h('div', 'g-dot g-dot-' + (o.kind === 'ring' ? 'ring' : 'solid'), el);
       this.dot.style.width = this.dot.style.height = size + 'px';
     }
@@ -269,6 +272,7 @@ export class PinEl extends Timed {
       const lab = (this.lab = h('div', `g-label g-${o.style} g-side-${side}`, el));
       lab.style.left = dx + 'px';
       lab.style.top = dy + 'px';
+      this._gap = o.kind === 'none' ? 0 : size / 2 + 9 * u;
       const inner = (this.inner = h('div', 'g-label-in', lab));
       h('div', 'g-name', inner, this.text);
       if (o.sub) h('div', 'g-sub', inner, o.sub);
@@ -276,6 +280,20 @@ export class PinEl extends Timed {
       if (o.textSize) inner.style.fontSize = o.textSize * u + 'px';
       this.side = SIDES[side];
     }
+  }
+  /** Move the label to another side of the point (used by the automatic layout). */
+  setSide(side) {
+    this.lab.className = `g-label g-${this.o.style} g-side-${side}`;
+    this.lab.style.left = SIDES[side][0] * this._gap + 'px';
+    this.lab.style.top = SIDES[side][1] * this._gap + 'px';
+    this.side = SIDES[side];
+    this.sideName = side;
+  }
+  /** Label box [x0, y0, x1, y1] relative to the point, for a given side. */
+  box(side, w, hh) {
+    const [sx, sy] = SIDES[side], g = this._gap;
+    const x = sx > 0 ? g : sx < 0 ? -g - w : -w / 2, y = sy > 0 ? g : sy < 0 ? -g - hh : -hh / 2;
+    return [x, y, x + w, y + hh];
   }
   update(t) {
     const on = t >= this.at && (this.end === null || t < this.end + this.outDur);
@@ -287,6 +305,7 @@ export class PinEl extends Timed {
     const out = this.end === null ? 0 : getEase('inOutCubic')(prog(t, this.end, this.outDur));
     this.el.style.opacity = 1 - out;
     if (this.dot) this.dot.style.transform = `translate(-50%, -50%) scale(${getEase('spring')(clamp(P / 0.7))})`;
+    if (this.ripple) { const q = getEase('outCubic')(clamp((t - this.at) / 1.1)); this.ripple.style.transform = `translate(-50%, -50%) scale(${1 + q * 3})`; this.ripple.style.opacity = q >= 1 ? 0 : (1 - q) ** 1.5 * 0.75; }
     if (this.stem) this.stem.style.transform = `translateX(-50%) scaleY(${getEase('outQuart')(clamp(P / 0.6))})`;
     if (this.rings) this.rings.forEach((r, i) => {
       const q = (((t - this.at) / 2.4 + i * 0.5) % 1 + 1) % 1;
@@ -365,14 +384,89 @@ export class Overlay {
     stage.style.setProperty('--accent', theme.accent);
     stage.style.setProperty('--halo', theme.dark ? rgba(theme.bg, 0.9) : rgba(theme.bg, 0.92));
     stage.style.setProperty('--m', (cfg.margin ?? 72) * this.u + 'px');
-    this.sphere = scene.cfg.globe ? h('div', 'sphere', stage) : null;
-    this.scrim = h('div', 'scrims', stage);
-    this.geo = h('div', 'geo', stage);
-    this.ui = h('div', 'ui', stage);
-    this.free = h('div', 'free', stage);
+    // Fast path (Chrome's HTML-in-canvas): the overlay lives inside a canvas and is drawn into it on top
+    // of the map, so a finished frame is one canvas whose pixels can be read back directly — no
+    // screenshot, no PNG. Without the API the overlay is ordinary DOM over the map and frames are screenshots.
+    const q = new URLSearchParams(location.search);
+    const can = 'drawElementImage' in CanvasRenderingContext2D.prototype && 'requestPaint' in HTMLCanvasElement.prototype;
+    let root;
+    if (can && !q.has('nocomp')) {
+      const dpr = window.devicePixelRatio || 1;
+      const comp = (this.comp = h('canvas', 'comp', stage));
+      comp.setAttribute('content', 'drawable');
+      comp.width = Math.round(W * dpr);
+      comp.height = Math.round(H * dpr);
+      this.ctx = comp.getContext('2d', { alpha: false, willReadFrequently: q.get('wrf') === '1' });
+      root = h('div', 'ov', comp);
+      root.setAttribute('drawable', '');
+      root.style.width = W + 'px';
+      root.style.height = H + 'px';
+      stage.classList.add('fast');
+      this.yuv = q.has('rgba') ? null : YuvPacker.create(comp.width, comp.height);
+    } else root = h('div', 'ov', stage);
+    this.root = root;
+    this.sphere = scene.cfg.globe ? h('div', 'sphere', root) : null;
+    this.scrim = h('div', 'scrims', root);
+    this.geo = h('div', 'geo', root);
+    this.ui = h('div', 'ui', root);
+    this.free = h('div', 'free', root);
     this.anchors = {};
-    this.post = h('div', 'post', stage);
+    this.post = h('div', 'post', root);
   }
+  /** Draw map + overlay into the compositing canvas. Resolves once the overlay's latest state is in it. */
+  compose() {
+    if (!this.comp) return Promise.resolve();
+    return new Promise((res) => {
+      let done = false;
+      const go = () => { if (done) return; done = true; this.comp.onpaint = null; this.draw(); res(); };
+      this.comp.onpaint = go; // element snapshots are refreshed for the paint event
+      this.comp.requestPaint();
+      setTimeout(() => { if (!done) { this.scene.warn('compositor paint event did not fire; frame drawn from the last snapshot'); go(); } }, 1000);
+    });
+  }
+  draw() {
+    const c = this.ctx, w = this.comp.width, hh = this.comp.height;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalCompositeOperation = 'source-over';
+    c.filter = 'none';
+    c.globalAlpha = 1;
+    c.fillStyle = this.scene.theme.bg;
+    c.fillRect(0, 0, w, hh);
+    const mapCanvas = this.scene.map.getCanvas();
+    c.drawImage(mapCanvas, 0, 0, w, hh);
+    // Bloom: a blurred quarter-size copy of the map screened back on, so bright strokes shed a little light.
+    const post = this.postCfg || {};
+    if (post.bloom > 0) {
+      const bw = Math.round(w / 4), bh = Math.round(hh / 4);
+      if (!this.bloomCv) { this.bloomCv = document.createElement('canvas'); this.bloomCv.width = bw; this.bloomCv.height = bh; this.bloomCtx = this.bloomCv.getContext('2d', { alpha: false }); }
+      const b = this.bloomCtx;
+      b.filter = `blur(${Math.max(2, w / 300).toFixed(1)}px) contrast(1.5) brightness(0.92)`;
+      b.drawImage(mapCanvas, 0, 0, bw, bh);
+      c.globalCompositeOperation = 'screen';
+      c.globalAlpha = post.bloom;
+      c.imageSmoothingQuality = 'high';
+      c.drawImage(this.bloomCv, 0, 0, w, hh);
+      c.globalCompositeOperation = 'source-over';
+      c.globalAlpha = 1;
+    }
+    c.drawElementImage(this.root, 0, 0, w, hh);
+    // optional fade from / to the background colour at the ends of the video
+    const f = this.scene.cfg.fade, t = this.time ?? 0, d = this.scene.duration;
+    if (f) {
+      const a = Math.max(f.in ? 1 - clamp(t / f.in) : 0, f.out ? clamp((t - (d - f.out)) / f.out) : 0);
+      if (a > 0) { c.globalAlpha = a * a * (3 - 2 * a); c.fillStyle = this.scene.theme.bg; c.fillRect(0, 0, w, hh); c.globalAlpha = 1; }
+    }
+  }
+  /** Running average of sub-frames for motion blur: call after each sub-frame k (1-based); last = write the mean back. */
+  accumulate(k, last = false) {
+    const w = this.comp.width, hh = this.comp.height;
+    if (!this.acc) { this.acc = document.createElement('canvas'); this.acc.width = w; this.acc.height = hh; this.accCtx = this.acc.getContext('2d', { alpha: false }); }
+    this.accCtx.globalAlpha = 1 / k;
+    this.accCtx.drawImage(this.comp, 0, 0);
+    if (last) { this.ctx.setTransform(1, 0, 0, 1, 0, 0); this.ctx.globalAlpha = 1; this.ctx.filter = 'none'; this.ctx.globalCompositeOperation = 'source-over'; this.ctx.drawImage(this.acc, 0, 0); }
+  }
+  /** The finished frame as raw bytes for the encoder: planar YUV 4:2:0 when the GPU can pack it, else RGBA. */
+  pixels() { return this.yuv ? this.yuv.pack(this.comp) : this.ctx.getImageData(0, 0, this.comp.width, this.comp.height).data; }
   anchor(pos) {
     const ok = ['tl', 't', 'tr', 'l', 'c', 'r', 'bl', 'b', 'br'];
     if (!ok.includes(pos)) throw new Error(`Unknown pos "${pos}". Valid: ${ok.join(', ')} or [x, y] in px`);
@@ -389,7 +483,8 @@ export class Overlay {
     }
     // Grain is static by default (a paper-like texture that also dithers dark gradients): it costs almost
     // no bitrate. post.grainMotion = true re-seeds it every frame for a filmic look at ~2× the file size.
-    const post = { vignette: 0.3, grain: 0.022, grainMotion: false, ...(cfg.post || {}) };
+    const post = { vignette: 0.3, grain: 0.022, grainMotion: false, bloom: theme.dark ? 0.2 : 0, ...(cfg.post || {}) };
+    this.postCfg = post;
     this.grainMotion = post.grainMotion;
     if (post.vignette > 0) h('div', 'vignette', this.post).style.background = `radial-gradient(ellipse 75% 75% at 50% 50%, rgba(0,0,0,0) 52%, ${rgba(theme.dark ? '#000' : theme.fg, post.vignette * (theme.dark ? 1 : 0.35))} 130%)`;
     if (post.grain > 0) {

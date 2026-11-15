@@ -124,7 +124,11 @@ export class PathMetric {
     this.coords = unwrap(coords.map((c) => [c[0], c[1]]));
     const n = this.coords.length;
     this.cum = new Float64Array(n);
-    for (let i = 1; i < n; i++) this.cum[i] = this.cum[i - 1] + haversine(this.coords[i - 1], this.coords[i]);
+    this.mcum = new Float64Array(n); // length on the Web-Mercator plane: what MapLibre's `line-progress` measures
+    for (let i = 1; i < n; i++) {
+      this.cum[i] = this.cum[i - 1] + haversine(this.coords[i - 1], this.coords[i]);
+      this.mcum[i] = this.mcum[i - 1] + Math.hypot(mercX(this.coords[i][0]) - mercX(this.coords[i - 1][0]), mercY(this.coords[i][1]) - mercY(this.coords[i - 1][1]));
+    }
     this.km = this.cum[n - 1];
   }
   _locate(f) {
@@ -133,6 +137,13 @@ export class PathMetric {
     while (hi - lo > 1) { const m = (lo + hi) >> 1; if (this.cum[m] <= d) lo = m; else hi = m; }
     const seg = this.cum[hi] - this.cum[lo];
     return [lo, seg > 0 ? (d - this.cum[lo]) / seg : 0];
+  }
+  /** Real-distance fraction → fraction of the line's length on the map plane (for line-progress gradients). */
+  mercFraction(f) {
+    if (f <= 0) return 0;
+    if (f >= 1) return 1;
+    const [i, k] = this._locate(f), n = this.mcum.length - 1, total = this.mcum[n];
+    return total ? (this.mcum[i] + (this.mcum[Math.min(i + 1, n)] - this.mcum[i]) * k) / total : f;
   }
   /** Point at fraction f (0..1). */
   at(f) {

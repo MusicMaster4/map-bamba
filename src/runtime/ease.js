@@ -40,6 +40,7 @@ const TIMING = ['at', 'dur', 'end', 'outDur', 'ease'];
 /** Fail fast on misspelt options: unknown keys throw with the list of valid ones. */
 export function check(o, allowed, what, timing = true) {
   if (!o || typeof o !== 'object') return;
+  for (const k of Object.keys(o)) if (o[k] === undefined) delete o[k]; // `key: undefined` means "not given"
   const ok = timing ? [...allowed, ...TIMING] : allowed;
   const bad = Object.keys(o).filter((k) => !ok.includes(k));
   if (bad.length) throw new Error(`${what}: unknown option${bad.length > 1 ? 's' : ''} ${bad.map((b) => '"' + b + '"').join(', ')}. Valid: ${ok.join(', ')}`);

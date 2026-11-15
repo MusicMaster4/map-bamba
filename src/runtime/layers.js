@@ -1,7 +1,7 @@
 // Map-space elements: they live inside the map (drape on terrain/globe, sit under labels).
 import { ease as getEase, prog, clamp, check } from './ease.js';
 import { PathMetric, unwrap, toFC, bbox } from './geo.js';
-import { rgba, mix } from './color.js';
+import { rgba, mix, luminance } from './color.js';
 
 const SLOT = { low: '@low', mid: '@mid', top: '@top', over: undefined };
 const slotId = (s) => { if (!(s in SLOT)) throw new Error(`Unknown slot "${s}". Valid: low (under water & roads), mid (over roads), top (under labels), over (above everything)`); return SLOT[s]; };
@@ -38,10 +38,18 @@ function partsOf(g) {
   throw new Error('line: unsupported geometry ' + (g.type || typeof g));
 }
 
+/** line-gradient that shows `color` only between line-progress a..b. */
+function ramp(color, a, b) {
+  const T = 'rgba(0,0,0,0)', lp = ['line-progress'];
+  if (b - a <= 1e-7) return ['interpolate', ['linear'], lp, 0, T, 1, T];
+  if (a <= 0 && b >= 1) return ['interpolate', ['linear'], lp, 0, color, 1, color];
+  return ['step', lp, a > 0 ? T : color, ...(a > 0 ? [a, color] : []), ...(b < 1 ? [b, T] : [])];
+}
+
 /** A path on the map that can draw itself. */
 export class LineEl extends Timed {
   constructor(scene, geom, o = {}) {
-    check(o, ['color', 'width', 'opacity', 'glow', 'glowColor', 'casing', 'dash', 'slot'], 's.line()');
+    check(o, ['color', 'width', 'opacity', 'glow', 'glowColor', 'casing', 'dash', 'slot', 'core', 'head'], 's.line()');
     super(scene, o, { dur: 0.01 });
     this.o = { color: scene.theme.accent, width: 5, opacity: 1, glow: 0, dash: null, slot: 'top', ...o };
     this.o.casing ??= !this.o.dash && this.o.width >= 3; // a dark casing under thin or dashed lines just muddies them
@@ -53,6 +61,9 @@ export class LineEl extends Timed {
     this.tracks = [];
     this.hasDraw = false;
     this.id = scene.uid('line');
+    // A single solid path reveals itself with a colour ramp along the line (a paint change: instant).
+    // Dashed or multi-part lines re-send their geometry instead, which costs a worker round trip.
+    this.sync = !this.o.dash && this.parts.length === 1;
   }
   /** Draw the line from its start: o = { at, dur, ease, to: 0..1 }. Call again to continue from where it stopped. */
   draw(o = {}) {
@@ -93,6 +104,17 @@ export class LineEl extends Timed {
     for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; if (this.range(mid)[1] >= f) hi = mid; else lo = mid; }
     return +hi.toFixed(3);
   }
+  /** Overlay part: keeps the tip on the head while the line draws. */
+  dom(t) {
+    if (!this.headEl) return;
+    const [a, b] = this.range(t);
+    const v = clamp((t - this._d0) / 0.25) * (1 - clamp((t - this._d1) / 0.5)) * this.vis(t) * (b > a ? 1 : 0);
+    const pt = v > 0.001 ? this.scene.project(this.metric.at(b)) : null;
+    if (!pt || !pt.visible) { this.headEl.style.display = 'none'; return; }
+    this.headEl.style.display = '';
+    this.headEl.style.opacity = v;
+    this.headEl.style.transform = `translate(${pt.x.toFixed(2)}px, ${pt.y.toFixed(2)}px)`;
+  }
   /** Fraction drawn at time t (0..1). */
   progress(t) { return this.range(t)[1]; }
   /** [lng, lat] of the drawing head at time t. */
@@ -103,20 +125,42 @@ export class LineEl extends Timed {
   }
   mount(map) {
     const o = this.o, th = this.scene.theme;
-    map.addSource(this.id, { type: 'geojson', data: this._data(0, this.hasDraw ? 0 : 1), tolerance: 0.2, buffer: 64 });
+    map.addSource(this.id, { type: 'geojson', data: this._data(0, this.sync || !this.hasDraw ? 1 : 0), tolerance: 0.2, buffer: 64, lineMetrics: this.sync });
     const before = slotId(o.slot);
     const layout = { 'line-cap': o.dash ? 'butt' : 'round', 'line-join': 'round' };
     this.layers = [];
-    const add = (suffix, paint, base) => { const id = this.id + suffix; map.addLayer({ id, type: 'line', source: this.id, layout: suffix === '' ? layout : { 'line-cap': 'round', 'line-join': 'round' }, paint }, before); this.layers.push({ id, base }); };
+    const add = (suffix, paint, base) => {
+      const id = this.id + suffix, color = paint['line-color'];
+      if (this.sync) { delete paint['line-color']; paint['line-gradient'] = ramp(color, 0, this.hasDraw ? 0 : 1); }
+      map.addLayer({ id, type: 'line', source: this.id, layout: suffix === '' ? layout : { 'line-cap': 'round', 'line-join': 'round' }, paint }, before);
+      this.layers.push({ id, base, color });
+    };
     if (o.glow) add('-glow', { 'line-color': o.glowColor || o.color, 'line-width': o.width * 5, 'line-blur': o.width * 4, 'line-opacity': 0 }, 0.42 * (o.glow === true ? 1 : o.glow));
     if (o.casing) add('-case', { 'line-color': typeof o.casing === 'string' ? o.casing : th.dark ? '#0d0d0d' : th.bg, 'line-width': o.width + 3.5, 'line-opacity': 0 }, th.dark ? 0.6 : 0.85);
     add('', { 'line-color': o.color, 'line-width': o.width, 'line-opacity': 0, ...(o.dash ? { 'line-dasharray': o.dash } : {}) }, o.opacity);
+    // a lighter filament down the middle gives the stroke some volume
+    if ((o.core ?? (!o.dash && o.width >= 4 && typeof o.color === 'string' && o.color[0] === '#')) && this.sync) add('-core', { 'line-color': mix(o.color, '#ffffff', 0.5), 'line-width': Math.max(1, o.width * 0.3), 'line-opacity': 0 }, 0.7 * o.opacity);
+    // the drawing tip: a round cap plus a soft light, in the overlay
+    if (this.hasDraw && o.head !== false) {
+      const u = this.scene.overlay.u, el = (this.headEl = document.createElement('div'));
+      el.className = 'g-head';
+      el.style.setProperty('--c', o.color);
+      el.style.setProperty('--w', o.width * u + 'px');
+      el.innerHTML = (o.glow ? '<i class="g-head-glow"></i>' : '') + '<i class="g-head-dot"></i>';
+      this.scene.overlay.geo.appendChild(el);
+      const d = this.drawSpan();
+      this._d0 = d.at; this._d1 = d.at + d.dur;
+    }
     this._last = null;
   }
   update(t, map) {
     const [a, b] = this.range(t);
     const key = a.toFixed(6) + ':' + b.toFixed(6);
-    if (key !== this._last) { map.getSource(this.id).setData(this._data(a, b)); this._last = key; }
+    if (key !== this._last) {
+      if (this.sync) { const ma = this.metric.mercFraction(a), mb = this.metric.mercFraction(b); for (const l of this.layers) map.setPaintProperty(l.id, 'line-gradient', ramp(l.color, ma, mb)); }
+      else map.getSource(this.id).setData(this._data(a, b));
+      this._last = key;
+    }
     const v = this.vis(t);
     for (const l of this.layers) map.setPaintProperty(l.id, 'line-opacity', +(l.base * v).toFixed(4));
   }
@@ -125,8 +169,9 @@ export class LineEl extends Timed {
 /** Filled region (country, neighbourhood, front line…). Data can be swapped over time with frames(). */
 export class AreaEl extends Timed {
   constructor(scene, geom, o = {}) {
-    check(o, ['color', 'fill', 'stroke', 'strokeWidth', 'strokeOpacity', 'hatch', 'glow', 'dash', 'slot'], 's.area()');
-    super(scene, o, { dur: 1 });
+    check(o, ['color', 'fill', 'stroke', 'strokeWidth', 'strokeOpacity', 'hatch', 'glow', 'dash', 'slot', 'in'], 's.area()');
+    if (o.in && !['draw', 'fade'].includes(o.in)) throw new Error(`Unknown area "in" preset "${o.in}". Valid: draw, fade`);
+    super(scene, o, { dur: o.in === 'fade' ? 1 : 1.5 });
     this.o = { color: scene.theme.accent, fill: 0.28, stroke: true, strokeWidth: 1.6, hatch: false, glow: 0, slot: 'low', ...o };
     this.data = toFC(geom);
     this.keyframes = null;
@@ -147,8 +192,21 @@ export class AreaEl extends Timed {
       add('-hatch', 'fill', { 'fill-pattern': img }, 'fill-opacity', h.opacity ?? 0.55);
     }
     const sc = o.stroke === true ? o.color : o.stroke;
-    if (o.glow && sc) add('-glow', 'line', { 'line-color': sc, 'line-width': o.strokeWidth * 7, 'line-blur': o.strokeWidth * 6 }, 'line-opacity', 0.4 * (o.glow === true ? 1 : o.glow), { 'line-join': 'round' });
-    if (sc) add('-line', 'line', { 'line-color': sc, 'line-width': o.strokeWidth, ...(o.dash ? { 'line-dasharray': o.dash } : {}) }, 'line-opacity', o.strokeOpacity ?? 0.95, { 'line-join': 'round' });
+    // 'draw': the outline is traced as lines (revealed with a colour ramp), the fill follows
+    const rings = [];
+    for (const f of this.data.features) { const g = f.geometry; if (g.type === 'Polygon') rings.push(...g.coordinates); else if (g.type === 'MultiPolygon') for (const p of g.coordinates) rings.push(...p); }
+    const points = rings.reduce((n, r) => n + r.length, 0);
+    this.drawIn = !!sc && !o.dash && !this.keyframes && rings.length > 0 && (o.in ? o.in === 'draw' : points < 60000);
+    const src = this.drawIn ? this.id + '-ring' : this.id;
+    if (this.drawIn) map.addSource(src, { type: 'geojson', lineMetrics: true, tolerance: 0.25, data: { type: 'Feature', properties: {}, geometry: { type: 'MultiLineString', coordinates: rings } } });
+    const stroke = (suffix, paint, base) => {
+      const id = this.id + suffix, color = paint['line-color'];
+      if (this.drawIn) { delete paint['line-color']; paint['line-gradient'] = ramp(color, 0, 0); }
+      map.addLayer({ id, type: 'line', source: src, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { ...paint, 'line-opacity': 0 } }, before);
+      this.layers.push({ id, prop: 'line-opacity', base, color, stroke: true });
+    };
+    if (o.glow && sc) stroke('-glow', { 'line-color': sc, 'line-width': o.strokeWidth * 7, 'line-blur': o.strokeWidth * 6 }, 0.4 * (o.glow === true ? 1 : o.glow));
+    if (sc) stroke('-line', { 'line-color': sc, 'line-width': o.strokeWidth, ...(o.dash ? { 'line-dasharray': o.dash } : {}) }, o.strokeOpacity ?? 0.95);
     this._cur = 0;
   }
   update(t, map) {
@@ -157,8 +215,19 @@ export class AreaEl extends Timed {
       for (let j = 0; j < this.keyframes.length; j++) if (this.keyframes[j].at <= t) i = j;
       if (i !== this._cur) { map.getSource(this.id).setData(this.keyframes[i].data); this._cur = i; }
     }
-    const v = this.vis(t);
-    for (const l of this.layers) map.setPaintProperty(l.id, l.prop, +(l.base * v).toFixed(4));
+    if (!this.drawIn) {
+      const v = this.vis(t);
+      for (const l of this.layers) map.setPaintProperty(l.id, l.prop, +(l.base * v).toFixed(4));
+      return;
+    }
+    const p = prog(t, this.at, this.dur), out = this.end === null ? 1 : 1 - getEase('inOutCubic')(prog(t, this.end, this.outDur));
+    const traced = getEase('inOutCubic')(clamp(p / 0.72)), filled = getEase('outCubic')(clamp((p - 0.38) / 0.62));
+    const key = traced.toFixed(4);
+    for (const l of this.layers) {
+      if (l.stroke && key !== this._traced) map.setPaintProperty(l.id, 'line-gradient', ramp(l.color, 0, traced));
+      map.setPaintProperty(l.id, l.prop, +(l.base * out * (l.stroke ? (p > 0 ? 1 : 0) : filled)).toFixed(4));
+    }
+    this._traced = key;
   }
 }
 
@@ -196,6 +265,8 @@ export class PointsEl extends Timed {
       return { type: 'Feature', id: i, properties: { _c: col(d, i), _r: siz(d, i), _n: name || '' }, geometry: { type: 'Point', coordinates: [d.lng, d.lat] }, _t: atf(d, i) + i * this.o.stagger };
     });
     this.id = scene.uid('pts');
+    this.at = this.features.reduce((m, f) => Math.min(m, f._t), Infinity); // first appearance (o.at may be a function)
+    if (!isFinite(this.at)) this.at = 0;
   }
   mount(map) {
     const o = this.o, th = this.scene.theme, before = slotId(o.slot);

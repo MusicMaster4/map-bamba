@@ -17,9 +17,13 @@ export async function load(url, base) {
   try { return JSON.parse(text); } catch { return text; }
 }
 
+/** Every place name resolved in this scene: [{ q, name, lng, lat }]. */
+export const resolved = [];
+
 async function nominatim(q, extra = '') {
   const r = await getJSON(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(q)}${extra}`);
   if (!r.length) throw new Error(`geocode: nothing found for "${q}". Try a more specific query ("Praça de Casa Forte, Recife") or pass [lng, lat].`);
+  if (!resolved.some((x) => x.q === q)) resolved.push({ q, name: String(r[0].display_name || r[0].name || '').split(',').slice(0, 3).join(',').trim(), lng: +(+r[0].lon).toFixed(4), lat: +(+r[0].lat).toFixed(4) });
   return r[0];
 }
 

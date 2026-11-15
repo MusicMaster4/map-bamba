@@ -126,6 +126,10 @@ export function buildStyle(t, opts = {}, tilesUrl) {
   if (o.buildings) {
     add({ id: 'building', type: 'fill', 'source-layer': 'building', minzoom: 13, paint: { 'fill-color': t.building, 'fill-outline-color': t.buildingLine, 'fill-opacity': o.buildings === '3d' ? lin(13, 0.6, 15, 0) : lin(13, 0.5, 15, 1) } });
     if (o.buildings === '3d') {
+      // footprints nudged towards the viewer read as contact shadows and seat the blocks on the ground
+      add({ id: 'building-shadow', type: 'fill', 'source-layer': 'building', minzoom: 13.5, filter: ['!=', ['get', 'hide_3d'], true],
+        paint: { 'fill-color': '#000000', 'fill-opacity': lin(13.5, 0, 15, t.dark ? 0.42 : 0.14), 'fill-translate-anchor': 'viewport',
+          'fill-translate': ['interpolate', ['exponential', 2], ['zoom'], 14, ['literal', [1.2, 1.6]], 18, ['literal', [19, 26]]] } });
       add({
         id: 'building-3d', type: 'fill-extrusion', 'source-layer': 'building', minzoom: 13.5,
         filter: ['!=', ['get', 'hide_3d'], true],

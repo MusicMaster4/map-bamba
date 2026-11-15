@@ -1,0 +1,21 @@
+{
+  "recipe": "compare",
+  "title": "Lisboa → Porto",
+  "lang": "pt",
+  "routes": [
+    {
+      "label": "pela A1",
+      "stops": [
+        "Lisboa",
+        "Porto"
+      ]
+    },
+    {
+      "label": "em linha reta",
+      "arc": [
+        "Lisboa",
+        "Porto"
+      ]
+    }
+  ]
+}

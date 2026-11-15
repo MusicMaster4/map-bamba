@@ -1,0 +1,29 @@
+{
+  "recipe": "highlight",
+  "title": "Mercosul",
+  "unit": "países",
+  "lang": "pt",
+  "groups": [
+    {
+      "label": "1991",
+      "places": [
+        "BR",
+        "AR",
+        "UY",
+        "PY"
+      ]
+    },
+    {
+      "label": "2012",
+      "places": [
+        "VE"
+      ]
+    },
+    {
+      "label": "2024",
+      "places": [
+        "BO"
+      ]
+    }
+  ]
+}

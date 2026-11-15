@@ -21,23 +21,23 @@ export class Camera {
    * Move to a view. Numbers are absolute; strings like '+40' / '-0.5' are relative to wherever the camera is.
    * o = { at, dur, ease, curve } — when both position and zoom change it flies (zooms out, then in); curve≈1.42.
    */
-  to(view, o = {}) {
+  to(view, o = {}, label = 'to') {
     check(view, VIEW, 'camera.to() view', false);
     check(o, ['at', 'dur', 'ease', 'curve'], 'camera.to() options', false);
-    this.segs.push({ type: 'to', view, at: o.at ?? this.scene.t, dur: o.dur ?? 3, ease: getEase(o.ease || 'glide'), curve: o.curve ?? 1.42 });
+    this.segs.push({ type: 'to', label, view, at: o.at ?? this.scene.t, dur: o.dur ?? 3, ease: getEase(o.ease || 'glide'), curve: o.curve ?? 1.42 });
     this._sort();
     return this;
   }
   /** Rotate around the current centre: o = { at, dur, by: degrees, ease }. */
-  orbit(o = {}) { check(o, ['at', 'dur', 'by', 'ease'], 'camera.orbit()', false); return this.to({ bearing: (o.by ?? 360) >= 0 ? '+' + (o.by ?? 360) : String(o.by) }, { ease: o.ease ?? 'inOutSine', at: o.at, dur: o.dur }); }
+  orbit(o = {}) { check(o, ['at', 'dur', 'by', 'ease'], 'camera.orbit()', false); return this.to({ bearing: (o.by ?? 360) >= 0 ? '+' + (o.by ?? 360) : String(o.by) }, { ease: o.ease ?? 'inOutSine', at: o.at, dur: o.dur }, 'orbit'); }
   /** Slow push/drift so a held shot never feels frozen: o = { at, dur, zoom: '+0.3', bearing: '+6' }. */
-  drift(o = {}) { check(o, ['at', 'dur', 'ease', 'zoom', 'bearing', 'pitch'], 'camera.drift()', false); return this.to({ zoom: o.zoom ?? '+0.25', bearing: o.bearing ?? '+0', pitch: o.pitch ?? '+0' }, { ease: o.ease ?? 'linear', at: o.at, dur: o.dur }); }
+  drift(o = {}) { check(o, ['at', 'dur', 'ease', 'zoom', 'bearing', 'pitch'], 'camera.drift()', false); return this.to({ zoom: o.zoom ?? '+0.25', bearing: o.bearing ?? '+0', pitch: o.pitch ?? '+0' }, { ease: o.ease ?? 'linear', at: o.at, dur: o.dur }, 'drift'); }
   /**
    * Keep the camera on the head of a line while it draws.
    * o = { at, dur, zoom, pitch, bearing: number|'auto', settle: seconds to reach zoom/pitch, blend: seconds to catch the head }
    */
   follow(line, o = {}) {
-    check(o, ['at', 'dur', 'ease', 'zoom', 'pitch', 'bearing', 'settle', 'blend', 'window', 'bearingOffset'], 'camera.follow()', false);
+    check(o, ['at', 'dur', 'ease', 'zoom', 'pitch', 'bearing', 'settle', 'blend', 'window', 'bearingOffset', 'ahead'], 'camera.follow()', false);
     if (!line || !line.metric) throw new Error('camera.follow(line, options): first argument must be a line created with s.line()');
     const d = line.drawSpan?.();
     this.segs.push({ type: 'follow', line, at: o.at ?? d?.at ?? this.scene.t, dur: o.dur ?? d?.dur ?? 5, o });
@@ -95,6 +95,7 @@ export class Camera {
         out.center = r.center;
         out.zoom = r.zoom;
       } else if (target.zoom !== undefined) out.zoom = lerp(from.zoom, target.zoom, p);
+      if (target.center) { const fo = from.offset || [0, 0]; out.offset = [lerp(fo[0], 0, p), lerp(fo[1], 0, p)]; } // re-framing recentres
       if (target.bearing !== undefined) out.bearing = lerp(from.bearing, target.bearing, p);
       if (target.pitch !== undefined) out.pitch = lerp(from.pitch, target.pitch, p);
     } else if (seg.type === 'follow') {
@@ -114,6 +115,10 @@ export class Camera {
         const d = ((h - from.bearing + 540) % 360) - 180;
         out.bearing = from.bearing + d * s;
       } else if (o.bearing !== undefined) out.bearing = lerp(from.bearing, rel(o.bearing, from.bearing), s);
+      // keep the head below centre so the way ahead is in frame (only meaningful when the map turns with it)
+      const ahead = o.ahead ?? (o.bearing === 'auto' ? 0.13 : 0);
+      const fo = from.offset || [0, 0];
+      out.offset = [lerp(fo[0], 0, s), lerp(fo[1], ahead * this.scene.height, s)];
     }
     return out;
   }

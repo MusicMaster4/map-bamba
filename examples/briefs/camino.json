@@ -1,0 +1,23 @@
+{
+  "recipe": "route",
+  "stops": [
+    "Saint-Jean-Pied-de-Port, France",
+    "Pamplona, Spain",
+    "Logroño, Spain",
+    "Burgos, Spain",
+    "León, Spain",
+    "Santiago de Compostela, Spain"
+  ],
+  "names": [
+    "Saint-Jean-Pied-de-Port",
+    "Pamplona",
+    "Logroño",
+    "Burgos",
+    "León",
+    "Santiago de Compostela"
+  ],
+  "profile": "foot",
+  "title": "Caminho de Santiago",
+  "sub": "Caminho Francês, a pé",
+  "lang": "pt"
+}

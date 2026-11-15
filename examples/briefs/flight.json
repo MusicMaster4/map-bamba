@@ -1,0 +1,16 @@
+{
+  "recipe": "flight",
+  "stops": [
+    "São Paulo",
+    "Lisbon",
+    "Tokyo"
+  ],
+  "subs": [
+    "GRU",
+    "LIS",
+    "NRT"
+  ],
+  "title": "São Paulo → Lisboa → Tóquio",
+  "lang": "pt",
+  "accent": "amber"
+}
